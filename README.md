@@ -39,6 +39,8 @@ cd server && JAVA_HOME=/usr/local/opt/openjdk@21 \
 cd web && pnpm install && pnpm dev        # 前端 :5173（/api 代理到 8080）
 ```
 
+> 容器均配 `restart: unless-stopped`，随 Docker 自起；后端是手动 `mvn` 进程，Mac 重启后要重跑第二行。
+
 ## LLM 配置（环境变量）
 
 不配 `LLM_API_KEY` 时自动进入 **mock 模式**（回显输入），骨架可先跑通。
