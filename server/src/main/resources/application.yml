@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agent-lab-server
+  datasource:
+    url: jdbc:mysql://localhost:13306/agent_lab?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: root
+    password: root123
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+  jpa:
+    hibernate:
+      ddl-auto: none   # 表结构只认 schema.sql，不让 JPA 自己建
+    open-in-view: false
+  data:
+    redis:
+      host: localhost
+      port: 16379
+
+llm:
+  base-url: ${LLM_BASE_URL:https://api.deepseek.com}
+  api-key: ${LLM_API_KEY:}
+  model: ${LLM_MODEL:deepseek-chat}
+  history-window: 20
+
+ratelimit:
+  chat-per-minute: 20

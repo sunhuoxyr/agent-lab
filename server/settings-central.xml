@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 公司 Nexus 抽风时备用：不走任何 mirror，直连 Maven Central。
+     用法：mvn -s settings-central.xml spring-boot:run
+     不覆盖 ~/.m2/settings.xml；本文件仅对本项目生效。 -->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <localRepository>${user.home}/.m2/repository</localRepository>
+</settings>
