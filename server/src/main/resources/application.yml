@@ -29,3 +29,7 @@ llm:
 
 ratelimit:
   chat-per-minute: 20
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true   # created_at → createdAt；不开则时间/外键列全 null

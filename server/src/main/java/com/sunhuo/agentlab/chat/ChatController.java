@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -21,6 +22,17 @@ public class ChatController {
 	public ChatController(ChatService chatService, ObjectMapper objectMapper) {
 		this.chatService = chatService;
 		this.objectMapper = objectMapper;
+	}
+
+	/** 非流式一口价：给 n8n 等自动化调（SSE 对 HTTP 节点不友好）。MVC 线程内 block，个人工具可接受 */
+	@PostMapping("/once")
+	public Map<String, Object> once(@Validated @RequestBody ChatRequest req) {
+		Long conversationId = chatService.prepareUserTurn(req);
+		String reply = chatService.streamReply(conversationId, req.getPresetId())
+				.collectList()
+				.map(parts -> String.join("", parts))
+				.block(java.time.Duration.ofSeconds(95));
+		return Map.of("conversationId", conversationId, "reply", reply == null ? "" : reply);
 	}
 
 	@PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
