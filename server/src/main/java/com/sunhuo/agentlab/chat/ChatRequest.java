@@ -12,6 +12,9 @@ public class ChatRequest {
 	/** null → 不带系统提示词 */
 	private Long presetId;
 
+	/** true → 先检索知识库片段再回答（需已 reindex） */
+	private Boolean rag;
+
 	@NotBlank(message = "消息不能为空")
 	private String message;
 }

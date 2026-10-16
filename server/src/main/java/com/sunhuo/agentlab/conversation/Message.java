@@ -11,5 +11,8 @@ public class Message {
 	private Long conversationId;
 	private String role;
 	private String content;
+	private Integer tokensPrompt;
+	private Integer tokensCompletion;
+	private Integer ttftMs;
 	private LocalDateTime createdAt;
 }

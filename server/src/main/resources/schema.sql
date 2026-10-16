@@ -11,8 +11,20 @@ CREATE TABLE IF NOT EXISTS message (
   conversation_id BIGINT NOT NULL,
   role VARCHAR(20) NOT NULL,
   content MEDIUMTEXT NOT NULL,
+  tokens_prompt INT NULL,
+  tokens_completion INT NULL,
+  ttft_ms INT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_conv_id (conversation_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS doc_chunk (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  path VARCHAR(500) NOT NULL,
+  chunk_index INT NOT NULL,
+  content TEXT NOT NULL,
+  vector_json MEDIUMTEXT NULL,
+  UNIQUE KEY uk_path_chunk (path(255), chunk_index)
 );
 
 CREATE TABLE IF NOT EXISTS prompt_preset (

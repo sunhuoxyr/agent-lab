@@ -2,6 +2,7 @@ package com.sunhuo.agentlab.chat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
+import reactor.core.Disposable;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,11 +29,15 @@ public class ChatController {
 	@PostMapping("/once")
 	public Map<String, Object> once(@Validated @RequestBody ChatRequest req) {
 		Long conversationId = chatService.prepareUserTurn(req);
-		String reply = chatService.streamReply(conversationId, req.getPresetId())
+		ChatService.ReplyStream replyStream = chatService.streamReply(
+				conversationId, req.getPresetId(), Boolean.TRUE.equals(req.getRag()));
+		String reply = replyStream.flux()
 				.collectList()
 				.map(parts -> String.join("", parts))
 				.block(java.time.Duration.ofSeconds(95));
-		return Map.of("conversationId", conversationId, "reply", reply == null ? "" : reply);
+		return Map.of("conversationId", conversationId,
+				"reply", reply == null ? "" : reply,
+				"sources", replyStream.sources());
 	}
 
 	@PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -42,24 +47,36 @@ public class ChatController {
 		SseEmitter emitter = new SseEmitter(120_000L);
 		send(emitter, "meta", "{\"conversationId\":" + conversationId + "}");
 
-		chatService.streamReply(conversationId, req.getPresetId())
-				.subscribe(
-						token -> send(emitter, "token", toJson(token)),
-						error -> {
-							send(emitter, "error", toJson(String.valueOf(error.getMessage())));
-							emitter.complete();
-						},
-						emitter::complete
-				);
+		ChatService.ReplyStream replyStream = chatService.streamReply(
+				conversationId, req.getPresetId(), Boolean.TRUE.equals(req.getRag()));
+		if (!replyStream.sources().isEmpty()) {
+			send(emitter, "sources", toJson(replyStream.sources()));
+		}
+
+		// 前端 Abort/断线 → 取消上游订阅，停了要停副作用（LLM 调用一并取消）
+		Disposable subscription = replyStream.flux().subscribe(
+				token -> send(emitter, "token", toJson(token)),
+				error -> {
+					send(emitter, "error", toJson(String.valueOf(error.getMessage())));
+					emitter.complete();
+				},
+				emitter::complete
+		);
+		emitter.onCompletion(subscription::dispose);
+		emitter.onError(e -> subscription.dispose());
+		emitter.onTimeout(() -> {
+			send(emitter, "error", toJson("响应超时"));
+			subscription.dispose();
+		});
 		return emitter;
 	}
 
-	/** token 统一 JSON 编码成单行：SSE data 里裸换行会把事件切碎 */
-	private String toJson(String text) {
+	/** 事件数据统一 JSON 编码成单行：SSE data 里裸换行会把事件切碎 */
+	private String toJson(Object value) {
 		try {
-			return objectMapper.writeValueAsString(text);
+			return objectMapper.writeValueAsString(value);
 		} catch (Exception e) {
-			return "\"\"";
+			return "null";
 		}
 	}
 

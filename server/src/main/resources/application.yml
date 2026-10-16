@@ -27,6 +27,13 @@ llm:
   model: ${LLM_MODEL:deepseek-chat}
   history-window: 20
 
+rag:
+  vault-path: ${VAULT_PATH:/Users/sunhuo/Library/Mobile Documents/iCloud~md~obsidian/Documents/origin}
+  embedding-base-url: ${EMBEDDING_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+  embedding-api-key: ${EMBEDDING_API_KEY:${LLM_API_KEY:}}
+  embedding-model: ${EMBEDDING_MODEL:embedding-3}
+  top-k: 5
+
 ratelimit:
   chat-per-minute: 20
 

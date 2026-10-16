@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * OpenAI 兼容流式客户端（DeepSeek / Kimi / GLM 同一形态）。
@@ -44,12 +45,18 @@ public class LlmClient {
 
 	/** messages 形如 [{"role":"user","content":"..."}]，流式吐出 delta 文本 */
 	public Flux<String> streamChat(List<Map<String, String>> messages) {
+		return streamChat(messages, null);
+	}
+
+	/** onUsage 拿到 (promptTokens, completionTokens)；mock 模式按 4 字符≈1 token 估算 */
+	public Flux<String> streamChat(List<Map<String, String>> messages, BiConsumer<Integer, Integer> onUsage) {
 		if (isMock()) {
-			return mockStream(messages);
+			return mockStream(messages, onUsage);
 		}
 		Map<String, Object> body = Map.of(
 				"model", model,
 				"stream", true,
+				"stream_options", Map.of("include_usage", true),
 				"messages", messages
 		);
 		StringBuilder carry = new StringBuilder();
@@ -63,8 +70,23 @@ public class LlmClient {
 				.concatMap(chunk -> splitSseLines(chunk, carry))
 				.takeUntil("[DONE]"::equals)
 				.filter(line -> !"[DONE]".equals(line))
+				.doOnNext(line -> reportUsage(line, onUsage))
 				.map(this::extractDelta)
 				.filter(delta -> !delta.isEmpty());
+	}
+
+	/** 末块带 usage（choices 为空）；有就上报 */
+	private void reportUsage(String data, BiConsumer<Integer, Integer> onUsage) {
+		if (onUsage == null) {
+			return;
+		}
+		try {
+			JsonNode usage = objectMapper.readTree(data).path("usage");
+			if (usage.isObject() && usage.has("prompt_tokens")) {
+				onUsage.accept(usage.path("prompt_tokens").asInt(), usage.path("completion_tokens").asInt());
+			}
+		} catch (Exception ignored) {
+		}
 	}
 
 	/** SSE 数据块可能跨 chunk，按行切开、残余留到下次 */
@@ -92,9 +114,13 @@ public class LlmClient {
 		}
 	}
 
-	private Flux<String> mockStream(List<Map<String, String>> messages) {
+	private Flux<String> mockStream(List<Map<String, String>> messages, BiConsumer<Integer, Integer> onUsage) {
 		String last = messages.get(messages.size() - 1).getOrDefault("content", "");
 		String reply = "（mock：未配置 LLM_API_KEY）\n\n你说的是：**" + last + "**\n\n配上 key 后，这里流出的就是真实模型回答。";
+		if (onUsage != null) {
+			int promptTokens = messages.stream().mapToInt(m -> m.getOrDefault("content", "").length()).sum() / 4;
+			onUsage.accept(Math.max(promptTokens, 1), reply.length() / 4);
+		}
 		return Flux.fromStream(reply.chars().mapToObj(c -> String.valueOf((char) c)))
 				.delayElements(Duration.ofMillis(12));
 	}

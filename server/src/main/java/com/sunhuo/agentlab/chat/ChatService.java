@@ -5,6 +5,7 @@ import com.sunhuo.agentlab.conversation.ConversationMapper;
 import com.sunhuo.agentlab.conversation.Message;
 import com.sunhuo.agentlab.conversation.MessageMapper;
 import com.sunhuo.agentlab.preset.PromptPresetRepository;
+import com.sunhuo.agentlab.rag.RagService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +14,8 @@ import reactor.core.publisher.Flux;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class ChatService {
@@ -21,19 +24,25 @@ public class ChatService {
 	private final MessageMapper messageMapper;
 	private final PromptPresetRepository presetRepository;
 	private final LlmClient llmClient;
+	private final RagService ragService;
 	private final int historyWindow;
 
 	public ChatService(ConversationMapper conversationMapper,
 	                   MessageMapper messageMapper,
 	                   PromptPresetRepository presetRepository,
 	                   LlmClient llmClient,
+	                   RagService ragService,
 	                   @Value("${llm.history-window}") int historyWindow) {
 		this.conversationMapper = conversationMapper;
 		this.messageMapper = messageMapper;
 		this.presetRepository = presetRepository;
 		this.llmClient = llmClient;
+		this.ragService = ragService;
 		this.historyWindow = historyWindow;
 	}
+
+	/** 一条助手回复的流 + 本次 RAG 命中的来源（未开 RAG 为空表） */
+	public record ReplyStream(Flux<String> flux, List<String> sources) {}
 
 	/** 落库用户这一轮；无 conversationId 则先建会话。返回会话 id。 */
 	@Transactional
@@ -56,28 +65,54 @@ public class ChatService {
 		return conversationId;
 	}
 
-	/** 拼历史 → 调 LLM；流完把整段 assistant 回答落库 */
-	public Flux<String> streamReply(Long conversationId, Long presetId) {
-		List<Map<String, String>> payload = buildPayload(conversationId, presetId);
-		StringBuilder acc = new StringBuilder();
-		return llmClient.streamChat(payload)
-				.doOnNext(acc::append)
-				.doOnComplete(() -> saveAssistantMessage(conversationId, acc.toString()));
-	}
-
-	private List<Map<String, String>> buildPayload(Long conversationId, Long presetId) {
+	/** 拼历史（按需叠 RAG 片段）→ 调 LLM；流完把整段 assistant 回答带指标落库 */
+	public ReplyStream streamReply(Long conversationId, Long presetId, boolean ragEnabled) {
 		List<Map<String, String>> payload = new ArrayList<>();
+		List<String> sources = new ArrayList<>();
 		if (presetId != null) {
 			presetRepository.findById(presetId).ifPresent(preset ->
 					payload.add(Map.of("role", "system", "content", preset.getSystemPrompt())));
 		}
-		for (Message m : messageMapper.findRecent(conversationId, historyWindow)) {
+		List<Message> history = messageMapper.findRecent(conversationId, historyWindow);
+		if (ragEnabled && !history.isEmpty()) {
+			String query = history.get(history.size() - 1).getContent();
+			List<RagService.ChunkHit> hits = ragService.search(query);
+			if (!hits.isEmpty()) {
+				StringBuilder kb = new StringBuilder("以下知识库片段供参考，回答后附出来源路径：\n\n");
+				for (RagService.ChunkHit hit : hits) {
+					kb.append("【").append(hit.path()).append("】\n").append(hit.content()).append("\n\n");
+				}
+				sources.addAll(hits.stream().map(RagService.ChunkHit::path).distinct().toList());
+				payload.add(Map.of("role", "system", "content", kb.toString()));
+			}
+		}
+		for (Message m : history) {
 			payload.add(Map.of("role", m.getRole(), "content", m.getContent()));
 		}
-		return payload;
+
+		StringBuilder acc = new StringBuilder();
+		AtomicLong startedAt = new AtomicLong();
+		AtomicLong ttftMs = new AtomicLong(-1);
+		AtomicInteger promptTokens = new AtomicInteger();
+		AtomicInteger completionTokens = new AtomicInteger();
+
+		Flux<String> flux = Flux.defer(() -> {
+					startedAt.set(System.currentTimeMillis());
+					return llmClient.streamChat(payload, (pt, ct) -> {
+						promptTokens.set(pt);
+						completionTokens.set(ct);
+					});
+				})
+				.doOnNext(token -> ttftMs.compareAndSet(-1, System.currentTimeMillis() - startedAt.get()))
+				.doOnNext(acc::append)
+				.doOnComplete(() -> saveAssistantMessage(
+						conversationId, acc.toString(),
+						promptTokens.get(), completionTokens.get(), ttftMs.get()));
+		return new ReplyStream(flux, sources);
 	}
 
-	private void saveAssistantMessage(Long conversationId, String content) {
+	private void saveAssistantMessage(Long conversationId, String content,
+	                                  int promptTokens, int completionTokens, long ttftMs) {
 		if (content.isBlank()) {
 			return;
 		}
@@ -85,6 +120,9 @@ public class ChatService {
 		assistant.setConversationId(conversationId);
 		assistant.setRole("assistant");
 		assistant.setContent(content);
+		assistant.setTokensPrompt(promptTokens);
+		assistant.setTokensCompletion(completionTokens);
+		assistant.setTtftMs(ttftMs >= 0 ? (int) ttftMs : null);
 		messageMapper.insert(assistant);
 	}
 

@@ -3,7 +3,9 @@
 > 远程仓：https://github.com/sunhuoxyr/agent-lab（private）
 
 个人全栈练习场：**Vue 3 + Spring Boot (Java) + MySQL + Redis + 大模型**。
-双目的：上手大模型（流式对话 / 后续 RAG），同时把四样技术串成一条真实链路。
+双目的：上手大模型（流式对话 / RAG），同时把四样技术串成一条真实链路。
+
+![聊天 + RAG 来源 + 指标](docs/screenshot-chat.png)
 
 ## 栈与落点
 
@@ -17,10 +19,34 @@
 
 ## 结构
 
+```mermaid
+flowchart LR
+  UI[web · Vue3+TS<br/>SSE 渲染 / Abort 停止 / 来源展示]
+  C[ChatController<br/>SseEmitter · once]
+  S[ChatService<br/>历史窗 · RAG 拼接 · 指标]
+  R[RagService<br/>vault 切块 · 向量/关键词检索]
+  L[LlmClient<br/>OpenAI 兼容流式 / mock 兜底]
+  RL[RateLimitInterceptor<br/>固定窗口]
+  DB[(MySQL :13306<br/>会话 · 消息+指标 · doc_chunk)]
+  RD[(Redis :16379<br/>限流计数)]
+  LLM[DeepSeek / Kimi / GLM<br/>未配 key → mock]
+  EMB[Embedding API<br/>可选，缺省降级关键词]
+
+  UI -->|POST /api/chat/stream| C
+  C --> RL --> RD
+  C --> S
+  S --> L --> LLM
+  S --> R
+  R -->|/embeddings| EMB
+  S --> DB
+  R --> DB
+```
+
 ```
 server/   Spring Boot 后端（Maven）
   chat/         SSE 聊天 + LlmClient（OpenAI 兼容流式 / mock 兜底）
-  conversation/ 会话与消息（MyBatis）
+  conversation/ 会话与消息（MyBatis）+ /api/stats 指标
+  rag/          RAG：切块 · embedding · 检索 · reindex
   preset/       提示词预设（Spring Data JPA，对照模块）
   ratelimit/    Redis 限流拦截器
   common/       Web 配置 + 统一异常

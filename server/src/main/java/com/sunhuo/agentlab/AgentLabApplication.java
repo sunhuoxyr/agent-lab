@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-@MapperScan("com.sunhuo.agentlab.conversation")
+@MapperScan({"com.sunhuo.agentlab.conversation", "com.sunhuo.agentlab.rag"})
 public class AgentLabApplication {
 
 	public static void main(String[] args) {

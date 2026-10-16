@@ -5,6 +5,7 @@ import com.sunhuo.agentlab.conversation.Message;
 import com.sunhuo.agentlab.conversation.MessageMapper;
 import com.sunhuo.agentlab.preset.PromptPreset;
 import com.sunhuo.agentlab.preset.PromptPresetRepository;
+import com.sunhuo.agentlab.rag.RagService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +20,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,9 +37,11 @@ class ChatServiceTest {
 	PromptPresetRepository presetRepository;
 	@Mock
 	LlmClient llmClient;
+	@Mock
+	RagService ragService;
 
 	private ChatService newService(int historyWindow) {
-		return new ChatService(conversationMapper, messageMapper, presetRepository, llmClient, historyWindow);
+		return new ChatService(conversationMapper, messageMapper, presetRepository, llmClient, ragService, historyWindow);
 	}
 
 	@Test
@@ -51,9 +56,9 @@ class ChatServiceTest {
 
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<List<Map<String, String>>> payloadCaptor = ArgumentCaptor.forClass(List.class);
-		when(llmClient.streamChat(payloadCaptor.capture())).thenReturn(Flux.just("你", "好"));
+		when(llmClient.streamChat(payloadCaptor.capture(), any())).thenReturn(Flux.just("你", "好"));
 
-		String reply = service.streamReply(1L, 7L).collectList().block()
+		String reply = service.streamReply(1L, 7L, false).flux().collectList().block()
 				.stream().reduce("", String::concat);
 
 		List<Map<String, String>> payload = payloadCaptor.getValue();
@@ -67,16 +72,16 @@ class ChatServiceTest {
 	}
 
 	@Test
-	@DisplayName("payload：无预设时不带 system，空回答不落库")
+	@DisplayName("payload：无预设不开 RAG 时不带 system，空回答不落库")
 	void noPresetNoSystemMessage() {
 		ChatService service = newService(20);
 		when(messageMapper.findRecent(1L, 20)).thenReturn(List.of(msg("user", "你好")));
 
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<List<Map<String, String>>> payloadCaptor = ArgumentCaptor.forClass(List.class);
-		when(llmClient.streamChat(payloadCaptor.capture())).thenReturn(Flux.just(""));
+		when(llmClient.streamChat(payloadCaptor.capture(), any())).thenReturn(Flux.just(""));
 
-		service.streamReply(1L, null).collectList().block();
+		service.streamReply(1L, null, false).flux().collectList().block();
 
 		List<Map<String, String>> payload = payloadCaptor.getValue();
 		assertThat(payload).hasSize(1);
