@@ -1,5 +1,7 @@
 # agent-lab
 
+> 远程仓：https://github.com/sunhuoxyr/agent-lab（private）
+
 个人全栈练习场：**Vue 3 + Spring Boot (Java) + MySQL + Redis + 大模型**。
 双目的：上手大模型（流式对话 / 后续 RAG），同时把四样技术串成一条真实链路。
 
