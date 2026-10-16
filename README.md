@@ -89,4 +89,6 @@ export LLM_API_KEY=sk-xxx
 
 ## backlog
 
-会话标题自动生成（问 LLM）· 消息重生成 · 用户认证 · 限流改滑动窗口 · **Abort 半截回复落库**（stopped 态：流断时把已收部分入库并标记，对齐五态）· **n8n 每晚调 /api/rag/reindex**（链路 3 再利用，索引自动化）· 向量库替换（Milvus/Chroma，量大了再说）
+会话标题自动生成（问 LLM）· 消息重生成 · 用户认证 · 限流改滑动窗口 · 向量库替换（Milvus/Chroma，量大了再说）
+
+已勾（2026-10-16）：RAG（切块检索 + 中文 bigram 降级）· Abort 停止 + 半截落库（stopped 态，CAS 防双写）· token/TTFT 指标 + /api/stats · n8n 每晚 22:30 自动 reindex（flow-lab 侧）

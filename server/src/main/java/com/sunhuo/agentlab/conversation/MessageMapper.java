@@ -11,8 +11,8 @@ import java.util.List;
 @Mapper
 public interface MessageMapper {
 
-	@Insert("INSERT INTO message(conversation_id, role, content, tokens_prompt, tokens_completion, ttft_ms) "
-			+ "VALUES(#{conversationId}, #{role}, #{content}, #{tokensPrompt}, #{tokensCompletion}, #{ttftMs})")
+	@Insert("INSERT INTO message(conversation_id, role, content, tokens_prompt, tokens_completion, ttft_ms, stopped) "
+			+ "VALUES(#{conversationId}, #{role}, #{content}, #{tokensPrompt}, #{tokensCompletion}, #{ttftMs}, #{stopped})")
 	@Options(useGeneratedKeys = true, keyProperty = "id")
 	int insert(Message message);
 

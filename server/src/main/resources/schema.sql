@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS message (
   tokens_prompt INT NULL,
   tokens_completion INT NULL,
   ttft_ms INT NULL,
+  stopped TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_conv_id (conversation_id, id)
 );

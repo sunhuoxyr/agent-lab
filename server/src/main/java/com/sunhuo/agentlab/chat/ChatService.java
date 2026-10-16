@@ -95,6 +95,8 @@ public class ChatService {
 		AtomicLong ttftMs = new AtomicLong(-1);
 		AtomicInteger promptTokens = new AtomicInteger();
 		AtomicInteger completionTokens = new AtomicInteger();
+		// complete 与 cancel 两路径都写库，CAS 保证只落一次（断线时两回调可能并发触发）
+		java.util.concurrent.atomic.AtomicBoolean savedOnce = new java.util.concurrent.atomic.AtomicBoolean();
 
 		Flux<String> flux = Flux.defer(() -> {
 					startedAt.set(System.currentTimeMillis());
@@ -105,14 +107,24 @@ public class ChatService {
 				})
 				.doOnNext(token -> ttftMs.compareAndSet(-1, System.currentTimeMillis() - startedAt.get()))
 				.doOnNext(acc::append)
-				.doOnComplete(() -> saveAssistantMessage(
-						conversationId, acc.toString(),
-						promptTokens.get(), completionTokens.get(), ttftMs.get()));
+				.doOnComplete(() -> {
+					if (savedOnce.compareAndSet(false, true)) {
+						saveAssistantMessage(conversationId, acc.toString(),
+								promptTokens.get(), completionTokens.get(), ttftMs.get(), false);
+					}
+				})
+				// Abort/断线：完整回调不触发，半截入库并标 stopped（五态对齐；正常完成后 dispose 不会误触）
+				.doOnCancel(() -> {
+					if (savedOnce.compareAndSet(false, true)) {
+						saveAssistantMessage(conversationId, acc.toString(),
+								promptTokens.get(), completionTokens.get(), ttftMs.get(), true);
+					}
+				});
 		return new ReplyStream(flux, sources);
 	}
 
 	private void saveAssistantMessage(Long conversationId, String content,
-	                                  int promptTokens, int completionTokens, long ttftMs) {
+	                                  int promptTokens, int completionTokens, long ttftMs, boolean stopped) {
 		if (content.isBlank()) {
 			return;
 		}
@@ -123,6 +135,7 @@ public class ChatService {
 		assistant.setTokensPrompt(promptTokens);
 		assistant.setTokensCompletion(completionTokens);
 		assistant.setTtftMs(ttftMs >= 0 ? (int) ttftMs : null);
+		assistant.setStopped(stopped);
 		messageMapper.insert(assistant);
 	}
 

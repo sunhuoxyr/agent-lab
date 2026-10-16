@@ -12,6 +12,7 @@ export interface Message {
   tokensPrompt?: number | null
   tokensCompletion?: number | null
   ttftMs?: number | null
+  stopped?: boolean
   sources?: string[]
 }
 

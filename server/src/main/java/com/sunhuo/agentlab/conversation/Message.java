@@ -14,5 +14,6 @@ public class Message {
 	private Integer tokensPrompt;
 	private Integer tokensCompletion;
 	private Integer ttftMs;
+	private Boolean stopped = false;
 	private LocalDateTime createdAt;
 }

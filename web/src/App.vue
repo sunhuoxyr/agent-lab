@@ -194,7 +194,10 @@ onMounted(async () => {
               <div v-if="m.sources && m.sources.length" class="sources">
                 来源：<span v-for="s in m.sources" :key="s" class="source-item">{{ s }}</span>
               </div>
-              <div v-if="metricsOf(m)" class="metrics">{{ metricsOf(m) }}</div>
+              <div class="meta-row">
+                <span v-if="m.stopped" class="stopped-tag">已停止</span>
+                <span v-if="metricsOf(m)" class="metrics">{{ metricsOf(m) }}</span>
+              </div>
             </div>
           </template>
           <template v-else>
